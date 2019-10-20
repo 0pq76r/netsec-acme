@@ -102,7 +102,7 @@ class RecordResolver:
         [reply.add_answer(*RR.fromZone(a)) for a in self.answers]
         return reply
 resolver = RecordResolver()
-dns = DNSServer(resolver,port=10053,address="localhost", logger=DNSLogger("-request,-reply,-truncated"))
+dns = DNSServer(resolver,port=10053,address="localhost" )#, logger=DNSLogger("-request,-reply,-truncated"))
 dns.start_thread()
 
 #######################
@@ -305,6 +305,7 @@ for a in authorizations:
         do_while = False
         try:
             r = jwt(a,s.post,{"kid":account}, ES256_priv_key, "")
+            print("auth status: {}".format(json.loads(r.content)['status']))
             if json.loads(r.content)['status'] != "valid":
                 time.sleep(2)
                 do_while = True
