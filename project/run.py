@@ -63,6 +63,7 @@ def jwt(url,action,key,priv_key,pload,accept = None):
 ###############################
 # ARGS
 ###############################
+print("ARGS ....")
 parser = argparse.ArgumentParser()
 parser.add_argument("challenge_type", choices=["dns01","http01"],
                     help="(required, {dns01 | http01}) indicates which ACME challenge type the client" +
@@ -91,13 +92,14 @@ args = parser.parse_args()
 ########################
 # DNS
 ########################
+print("DNS ....")
 
 # start dns
 class RecordResolver:
     answers = ["*. 60 A {}".format(args.record)]
     def resolve(self,request,handler):
         reply = request.reply()
-        [reply.add_answer(*RR.fromZone(a)) for a in self.answers if a.startswith(str(request.get_q().get_qname()))]
+        [reply.add_answer(*RR.fromZone(a)) for a in self.answers]
         return reply
 resolver = RecordResolver()
 dns = DNSServer(resolver,port=10053,address="localhost", logger=DNSLogger("-request,-reply,-truncated"))
@@ -106,6 +108,7 @@ dns.start_thread()
 #######################
 # HTTP 
 #######################
+print("HTTP ....")
 http01 = http.server.HTTPServer(('localhost', 5002), http.server.SimpleHTTPRequestHandler)
 threading.Thread(target=http01.serve_forever).start()
 
@@ -116,6 +119,7 @@ threading.Thread(target=http_shut.serve_forever).start()
 ######################
 # key
 ######################
+print("KEY ....")
 ES256_priv_key = ec.generate_private_key(
     ec.SECP256R1(), default_backend()
 )
@@ -150,6 +154,7 @@ ES256_thumb = base64url(hashlib.sha256(jwk_str.encode('utf-8')).digest())
 ######################
 # CSR
 ######################
+print("CSR ....")
 csr = x509.CertificateSigningRequestBuilder().subject_name(x509.Name([
     x509.NameAttribute(NameOID.COUNTRY_NAME, u"  "),
     x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u" "),
@@ -164,8 +169,9 @@ with open("./csr.pem", "wb") as f:
     f.write(csr.public_bytes(serialization.Encoding.PEM))
 
 ######################
-# request session
-######################    
+# requests session
+######################
+print("requests session ....")
 s = requests.Session()
 s.verify = './pebble_https_ca.pem'
 s.headers.update({'Content-Type': 'application/jose+json'})
@@ -173,6 +179,7 @@ s.headers.update({'Content-Type': 'application/jose+json'})
 ######################
 # ACME dir structure
 ######################
+print("ACME dir ....")
 do_while = True
 while do_while:
     do_while = False
@@ -195,6 +202,7 @@ while do_while:
 ######################
 # ACME new Account
 ######################
+print("ACME new Account ....")
 do_while = True
 while do_while:
     do_while = False
@@ -218,6 +226,7 @@ while do_while:
 ######################
 # ACME new Order
 ######################
+print("ACME new Order ....")
 do_while = True
 while do_while:
     do_while = False
@@ -242,6 +251,7 @@ while do_while:
 ######################
 # ACME start authorization
 ######################
+print("ACME new Auth ....")
 for a in authorizations:
     do_while = True
     while do_while:
@@ -288,6 +298,7 @@ for a in authorizations:
 ######################
 # ACME wait authorization
 ######################
+print("ACME wait Auth ....")
 for a in authorizations:
     do_while = True
     while do_while:
@@ -310,6 +321,7 @@ for a in authorizations:
 ######################
 # ACME finalize
 ######################
+print("ACME finalize ....")
 do_while = True
 while do_while:
     do_while = False
@@ -333,6 +345,7 @@ while do_while:
 ######################
 # ACME wait cert
 ######################
+print("ACME wait cert ....")
 do_while = True
 while do_while:
     do_while = False
@@ -356,6 +369,7 @@ while do_while:
 ######################
 # ACME download cert
 ######################
+print("ACME download cert ....")
 do_while = True
 while do_while:
     do_while = False
@@ -376,8 +390,9 @@ with open("./ec_cert.pem", "wb") as f:
     f.write(r.content)
 
 ######################
-# ACME download cert
+# HTTPS serve
 ######################
+print("HTTPS serve ....")
 http_cert = http.server.HTTPServer(('localhost', 5001), http.server.SimpleHTTPRequestHandler)
 http_cert.socket = ssl.wrap_socket(http_cert.socket,
                                    server_side=True,
@@ -387,5 +402,5 @@ http_cert.socket = ssl.wrap_socket(http_cert.socket,
 threading.Thread(target=http_cert.serve_forever).start()
 
 while True:
-    time.sleep(30)
     print("Zzzzzz! Zzzzzz! ")
+    time.sleep(30)
