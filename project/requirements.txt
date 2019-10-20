@@ -1,13 +1,14 @@
-argparse
-json
-base64
-math
-time
-hashlib
-traceback
-http.server
-ssl
-threading
+# from std lib:
+# - argparse
+# - json
+# - base64
+# - math
+# - time
+# - hashlib
+# - traceback
+# - http.server
+# - ssl
+# - threading
 
 cryptography
 dnslib
