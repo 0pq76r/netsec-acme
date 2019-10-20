@@ -305,7 +305,8 @@ for a in authorizations:
         do_while = False
         try:
             r = jwt(a,s.post,{"kid":account}, ES256_priv_key, "")
-            print("auth status: {}".format(json.loads(r.content)['status']))
+            assert(json.loads(r.content)['status'] != 'invalid')
+            print("- status: {}".format(json.loads(r.content)['status']))
             if json.loads(r.content)['status'] != "valid":
                 time.sleep(2)
                 do_while = True
