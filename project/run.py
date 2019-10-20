@@ -6,9 +6,14 @@ import json
 import base64
 import math
 import time
+import hashlib
+import traceback
+import http.server, ssl
+import threading
 
 from dnslib import RR
-from dnslib.server import DNSServer
+from dnslib.server import DNSServer, DNSLogger
+
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization, hashes
@@ -22,16 +27,21 @@ def base64url(s):
 def base64url_d(s):
     try:
         return base64.urlsafe_b64decode(s)
-    except:
+    except e:
+        traceback.print_exc()
         pass
     try:
         return base64.urlsafe_b64decode(s+"=")
-    except:
+    except e:
+        traceback.print_exc()
         pass
     return base64.urlsafe_b64decode(s+"==")
 
-def jwt(url,action,key,priv_key,pload):
-    global nonce
+def jwt(url,action,key,priv_key,pload,accept = None):
+    # fast polling causes invalid nonce
+    r=action.__self__.head(newNonce)
+    nonce=r.headers['Replay-Nonce'];
+
     protected = base64url(json.dumps({
         "alg": "ES256",
         **key,
@@ -45,15 +55,14 @@ def jwt(url,action,key,priv_key,pload):
     comb=protected+"."+payload
     (r,s) = utils.decode_dss_signature(priv_key.sign((comb).encode('utf-8'), signature_algorithm=ec.ECDSA(hashes.SHA256())))
     signature=base64url(to_bytes(r)+to_bytes(s))
+    action.__self__.headers.update({'Accept': accept})
     r=action(url, json.dumps({"protected":protected, "payload":payload, "signature":signature}))
     nonce=r.headers['Replay-Nonce'];
     return r
 
-# Generate private key
-ES256_priv_key = ec.generate_private_key(
-    ec.SECP256R1(), default_backend()
-)
-
+###############################
+# ARGS
+###############################
 parser = argparse.ArgumentParser()
 parser.add_argument("challenge_type", choices=["dns01","http01"],
                     help="(required, {dns01 | http01}) indicates which ACME challenge type the client" +
@@ -79,17 +88,68 @@ parser.add_argument("--revoke",
                     action="store_true")
 args = parser.parse_args()
 
+########################
+# DNS
+########################
+
 # start dns
 class RecordResolver:
+    answers = ["*. 60 A {}".format(args.record)]
     def resolve(self,request,handler):
         reply = request.reply()
-        reply.add_answer(*RR.fromZone("*. 60 A {}".format(args.record)))
+        [reply.add_answer(*RR.fromZone(a)) for a in self.answers if a.startswith(str(request.get_q().get_qname()))]
         return reply
 resolver = RecordResolver()
-dns = DNSServer(resolver,port=10053,address="localhost")
+dns = DNSServer(resolver,port=10053,address="localhost", logger=DNSLogger("-request,-reply,-truncated"))
 dns.start_thread()
 
-# Generate a CSR
+#######################
+# HTTP 
+#######################
+http01 = http.server.HTTPServer(('localhost', 5002), http.server.SimpleHTTPRequestHandler)
+threading.Thread(target=http01.serve_forever).start()
+
+http_shut = http.server.HTTPServer(('localhost', 5003), http.server.SimpleHTTPRequestHandler)
+threading.Thread(target=http_shut.serve_forever).start()
+
+
+######################
+# key
+######################
+ES256_priv_key = ec.generate_private_key(
+    ec.SECP256R1(), default_backend()
+)
+
+x=ES256_priv_key.public_key().public_numbers().x
+y=ES256_priv_key.public_key().public_numbers().y
+
+ES256_out_key = ec.generate_private_key(
+    ec.SECP256R1(), default_backend()
+)
+with open("./ec_priv_key.pem", "wb") as f:
+    f.write(ES256_out_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.TraditionalOpenSSL,
+        encryption_algorithm=serialization.NoEncryption()
+    ))
+with open("./ec_pub_key.pem", "wb") as f:
+    f.write(ES256_out_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    ))
+
+jwk = {
+    "kty":"EC",
+    "crv":"P-256",
+    "x":base64url(to_bytes(x)),
+    "y":base64url(to_bytes(y)),
+}
+jwk_str = json.dumps(jwk, sort_keys=True).replace(' ','').encode('utf-8').decode('ascii')
+ES256_thumb = base64url(hashlib.sha256(jwk_str.encode('utf-8')).digest())
+
+######################
+# CSR
+######################
 csr = x509.CertificateSigningRequestBuilder().subject_name(x509.Name([
     x509.NameAttribute(NameOID.COUNTRY_NAME, u"  "),
     x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, u" "),
@@ -99,69 +159,233 @@ csr = x509.CertificateSigningRequestBuilder().subject_name(x509.Name([
 ])).add_extension(
     x509.SubjectAlternativeName([x509.DNSName(domain) for domain in args.domain]),
     critical=False,
-).sign(ES256_priv_key, hashes.SHA256(), default_backend())
+).sign(ES256_out_key, hashes.SHA256(), default_backend())
 with open("./csr.pem", "wb") as f:
     f.write(csr.public_bytes(serialization.Encoding.PEM))
 
+######################
+# request session
+######################    
 s = requests.Session()
 s.verify = './pebble_https_ca.pem'
 s.headers.update({'Content-Type': 'application/jose+json'})
 
-r=s.get(args.dir)
-newNonce=json.loads(r.content)['newNonce']
-newAccount=json.loads(r.content)['newAccount']
-keyChange=json.loads(r.content)['keyChange']
-newOrder=json.loads(r.content)['newOrder']
-revokeCert=json.loads(r.content)['revokeCert']
+######################
+# ACME dir structure
+######################
+do_while = True
+while do_while:
+    do_while = False
+    try:
+        r=s.get(args.dir)
+        newNonce=json.loads(r.content)['newNonce']
+        newAccount=json.loads(r.content)['newAccount']
+        newOrder=json.loads(r.content)['newOrder']
+        revokeCert=json.loads(r.content)['revokeCert']
+    except Exception as e:
+        traceback.print_exc()
+        print('>- ERROR ------------')
+        print('--- HEAD ------------')
+        print(r.headers)
+        print('--- CONTENT ------------')
+        print(r.content)
+        print('<- ERROR ------------')
+        do_while = True
 
-r=s.head(newNonce)
-nonce=r.headers['Replay-Nonce'];
+######################
+# ACME new Account
+######################
+do_while = True
+while do_while:
+    do_while = False
+    try:
+        r = jwt(newAccount,
+                     s.post,
+                     {'jwk': jwk},
+                     ES256_priv_key,
+                     {"termsOfServiceAgreed": True})
+        account=r.headers['Location'];
+    except Exception as e:
+        traceback.print_exc()
+        print('>- ERROR ------------')
+        print('--- HEAD ------------')
+        print(r.headers)
+        print('--- CONTENT ------------')
+        print(r.content)
+        print('<- ERROR ------------')
+        do_while = True
 
-x=ES256_priv_key.public_key().public_numbers().x
-y=ES256_priv_key.public_key().public_numbers().y
-with open("./ec_priv_key.pem", "wb") as f:
-    f.write(ES256_priv_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.TraditionalOpenSSL,
-        encryption_algorithm=serialization.NoEncryption()
-    ))
-with open("./ec_pub_key.pem", "wb") as f:
-    f.write(ES256_priv_key.public_key().public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo
-    ))
-
-r = jwt(newAccount,
-             s.post,
-             {'jwk':{
-                 "kty":"EC",
-                 "crv":"P-256",
-                 "x":base64url(to_bytes(x)),
-                 "y":base64url(to_bytes(y)),
-             }},
-             ES256_priv_key,
-             {"termsOfServiceAgreed": True})
-account=r.headers['Location'];
-
-r = jwt(newOrder,s.post,{"kid":account}, ES256_priv_key,
+######################
+# ACME new Order
+######################
+do_while = True
+while do_while:
+    do_while = False
+    try:
+        r = jwt(newOrder,s.post,{"kid":account}, ES256_priv_key,
              {"identifiers":
               [ { "type": "dns", "value": domain } for domain in args.domain ]
              })
-finalize=json.loads(r.content)['finalize']
-authorizations=json.loads(r.content)['authorizations']
+        order=r.headers['Location'];
+        finalize=json.loads(r.content)['finalize']
+        authorizations=json.loads(r.content)['authorizations']
+    except Exception as e:
+        traceback.print_exc()
+        print('>- ERROR ------------')
+        print('--- HEAD ------------')
+        print(r.headers)
+        print('--- CONTENT ------------')
+        print(r.content)
+        print('<- ERROR ------------')
+        do_while = True
 
+######################
+# ACME start authorization
+######################
 for a in authorizations:
-    r = jwt(a,s.post,{"kid":account}, ES256_priv_key, "")
-    challenges=json.loads(r.content)['challenges']
+    do_while = True
+    while do_while:
+        do_while = False
+        try:
+            r = jwt(a,s.post,{"kid":account}, ES256_priv_key, "")
+            challenges=json.loads(r.content)['challenges']
+            for c in challenges:
+                if args.challenge_type == "dns01" and c['type'] == "dns-01":
+                    challenge=c
+                    resolver.answers.append("_acme-challenge.{}. 300 IN TXT {}".format(
+                        json.loads(r.content)['identifier']['value'],
+                        base64url(hashlib.sha256((c['token']+'.'+ES256_thumb).encode('utf-8')).digest())))
+                    break
+                if args.challenge_type == "http01" and c['type'] == "http-01":
+                    challenge=c
+                    break
+        except Exception as e:
+            traceback.print_exc()
+            print('>- ERROR ------------')
+            print('--- HEAD ------------')
+            print(r.headers)
+            print('--- CONTENT ------------')
+            print(r.content)
+            print('<- ERROR ------------')
+            do_while = True
 
-    for c in challenges:
-        if args.challenge_type == "dns01" and c['type'] == "dns-01":
-            challenge=c
-            break
-        if args.challenge_type == "http01" and c['type'] == "http-01":
-            challenge=c
-            break
+    
+    do_while = True
+    while do_while:
+        do_while = False
+        try:
+            r = jwt(challenge['url'],s.post,{"kid":account}, ES256_priv_key, {})
+        except Exception as e:
+            traceback.print_exc()
+            print('>- ERROR ------------')
+            print('--- HEAD ------------')
+            print(r.headers)
+            print('--- CONTENT ------------')
+            print(r.content)
+            print('<- ERROR ------------')
+            do_while = True
 
-    r = jwt(c['url'],s.post,{"kid":account}, ES256_priv_key, {})
-    print(r.headers)
-    print(r.content)
+######################
+# ACME wait authorization
+######################
+for a in authorizations:
+    do_while = True
+    while do_while:
+        do_while = False
+        try:
+            r = jwt(a,s.post,{"kid":account}, ES256_priv_key, "")
+            if json.loads(r.content)['status'] != "valid":
+                time.sleep(2)
+                do_while = True
+        except Exception as e:
+            traceback.print_exc()
+            print('>- ERROR ------------')
+            print('--- HEAD ------------')
+            print(r.headers)
+            print('--- CONTENT ------------')
+            print(r.content)
+            print('<- ERROR ------------')
+            do_while = True
+
+######################
+# ACME finalize
+######################
+do_while = True
+while do_while:
+    do_while = False
+    try:
+        r = jwt(finalize,s.post,{"kid":account}, ES256_priv_key, {
+            "csr": base64url(csr.public_bytes(serialization.Encoding.DER))
+        })
+        if r.status_code  >= 400:
+            do_while=True
+    except Exception as e:
+        do_while=True
+        traceback.print_exc()
+        print('>- ERROR ------------')
+        print('--- HEAD ------------')
+        print(r.headers)
+        print('--- CONTENT ------------')
+        print(r.content)
+        print('<- ERROR ------------')
+        #do_while = True
+
+######################
+# ACME wait cert
+######################
+do_while = True
+while do_while:
+    do_while = False
+    try:
+        r = jwt(order,s.post,{"kid":account}, ES256_priv_key, "")
+        if not "certificate" in json.loads(r.content):
+            time.sleep(2)
+            do_while = True
+        else:
+            cert = json.loads(r.content)["certificate"]
+    except Exception as e:
+        traceback.print_exc()
+        print('>- ERROR ------------')
+        print('--- HEAD ------------')
+        print(r.headers)
+        print('--- CONTENT ------------')
+        print(r.content)
+        print('<- ERROR ------------')
+        do_while = True
+
+######################
+# ACME download cert
+######################
+do_while = True
+while do_while:
+    do_while = False
+    try:
+        r = jwt(cert,s.post,{"kid":account}, ES256_priv_key, "", "application/pem-certificate-chain")
+        assert(r.status_code == 200)
+    except Exception as e:
+        traceback.print_exc()
+        print('>- ERROR ------------')
+        print('--- HEAD ------------')
+        print(r.headers)
+        print('--- CONTENT ------------')
+        print(r.content)
+        print('<- ERROR ------------')
+        do_while = True
+
+with open("./ec_cert.pem", "wb") as f:
+    f.write(r.content)
+
+######################
+# ACME download cert
+######################
+http_cert = http.server.HTTPServer(('localhost', 5001), http.server.SimpleHTTPRequestHandler)
+http_cert.socket = ssl.wrap_socket(http_cert.socket,
+                                   server_side=True,
+                                   certfile='ec_cert.pem',
+                                   keyfile='ec_priv_key.pem',
+                                   ssl_version=ssl.PROTOCOL_TLS)
+threading.Thread(target=http_cert.serve_forever).start()
+
+while True:
+    time.sleep(30)
+    print("Zzzzzz! Zzzzzz! ")
