@@ -102,17 +102,17 @@ class RecordResolver:
         [reply.add_answer(*RR.fromZone(a)) for a in self.answers]
         return reply
 resolver = RecordResolver()
-dns = DNSServer(resolver,port=10053,address="localhost" )#, logger=DNSLogger("-request,-reply,-truncated"))
+dns = DNSServer(resolver,port=10053,address="0.0.0.0" )#, logger=DNSLogger("-request,-reply,-truncated"))
 dns.start_thread()
 
 #######################
 # HTTP 
 #######################
 print("HTTP ....")
-http01 = http.server.HTTPServer(('localhost', 5002), http.server.SimpleHTTPRequestHandler)
+http01 = http.server.HTTPServer(('0.0.0.0', 5002), http.server.SimpleHTTPRequestHandler)
 threading.Thread(target=http01.serve_forever).start()
 
-http_shut = http.server.HTTPServer(('localhost', 5003), http.server.SimpleHTTPRequestHandler)
+http_shut = http.server.HTTPServer(('0.0.0.0', 5003), http.server.SimpleHTTPRequestHandler)
 threading.Thread(target=http_shut.serve_forever).start()
 
 
@@ -395,7 +395,7 @@ with open("./ec_cert.pem", "wb") as f:
 # HTTPS serve
 ######################
 print("HTTPS serve ....")
-http_cert = http.server.HTTPServer(('localhost', 5001), http.server.SimpleHTTPRequestHandler)
+http_cert = http.server.HTTPServer(('0.0.0.0', 5001), http.server.SimpleHTTPRequestHandler)
 http_cert.socket = ssl.wrap_socket(http_cert.socket,
                                    server_side=True,
                                    certfile='ec_cert.pem',
