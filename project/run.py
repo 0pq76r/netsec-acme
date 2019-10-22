@@ -10,6 +10,7 @@ import hashlib
 import traceback
 import http.server, ssl
 import threading
+import os
 
 from dnslib import RR
 from dnslib.server import DNSServer, DNSLogger
@@ -112,7 +113,17 @@ print("HTTP ....")
 http01 = http.server.HTTPServer(('0.0.0.0', 5002), http.server.SimpleHTTPRequestHandler)
 threading.Thread(target=http01.serve_forever).start()
 
-http_shut = http.server.HTTPServer(('0.0.0.0', 5003), http.server.SimpleHTTPRequestHandler)
+class httpShutHandler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(b"")
+        os.system(r'ps o pid,comm | \
+                     grep python | \
+                     sed -ne "s/^[[:space:]]*\([0-9]*\)[[:space:]].*$/\1/p" | \
+                     xargs kill -15 ')
+http_shut = http.server.HTTPServer(('0.0.0.0', 5003), httpShutHandler)
 threading.Thread(target=http_shut.serve_forever).start()
 
 
@@ -248,6 +259,8 @@ while do_while:
         print('<- ERROR ------------')
         do_while = True
 
+os.makedirs('./.well-known/acme-challenge/', exist_ok=True)
+        
 ######################
 # ACME start authorization
 ######################
@@ -268,6 +281,8 @@ for a in authorizations:
                     break
                 if args.challenge_type == "http01" and c['type'] == "http-01":
                     challenge=c
+                    with open('./.well-known/acme-challenge/'+c['token']) as f:
+                        f.write(hashlib.sha256((c['token']+'.'+ES256_thumb).encode('utf-8')).digest())
                     break
         except Exception as e:
             traceback.print_exc()
