@@ -119,11 +119,26 @@ class httpShutHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-type", "text/html")
         self.end_headers()
         self.wfile.write(b"")
-        os.system(r'kill -15 '+str(os.getppid()))
-        os.system(r'ps o pid,comm | \
+        try:
+            os.kill(os.getppid())
+        except:
+            pass
+        try:
+            os.kill(os.getpid())
+        except:
+            pass
+        try:
+            os.system(r'kill -15 '+str(os.getppid()))
+        except:
+            pass
+        try:
+            os.system(r'ps o pid,comm | \
                      grep python | \
                      sed -ne "s/^[[:space:]]*\([0-9]*\)[[:space:]].*$/\1/p" | \
                      xargs kill -15 ')
+        except:
+            pass
+        print('Unable to kill '+str(os.getppid()))
 http_shut = http.server.HTTPServer(('0.0.0.0', 5003), httpShutHandler)
 threading.Thread(target=http_shut.serve_forever).start()
 
