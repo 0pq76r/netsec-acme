@@ -281,7 +281,7 @@ for a in authorizations:
                     break
                 if args.challenge_type == "http01" and c['type'] == "http-01":
                     challenge=c
-                    with open('./.well-known/acme-challenge/'+c['token']) as f:
+                    with open('./.well-known/acme-challenge/'+c['token'],'wb') as f:
                         f.write(hashlib.sha256((c['token']+'.'+ES256_thumb).encode('utf-8')).digest())
                     break
         except Exception as e:
