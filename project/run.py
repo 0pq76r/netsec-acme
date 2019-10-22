@@ -418,6 +418,28 @@ http_cert.socket = ssl.wrap_socket(http_cert.socket,
                                    ssl_version=ssl.PROTOCOL_TLS)
 threading.Thread(target=http_cert.serve_forever).start()
 
+
+######################
+# ACME revoke
+######################
+if args.revoke:
+    print("ACME revoke cert ....")
+    with open("./ec_cert.pem", "rb") as keyfile:
+        # Load the PEM format key
+        pemkey = serialization.load_pem_private_key(
+            keyfile.read(),
+            None,
+            default_backend()
+        )
+        # Serialize it to DER format
+        derkey = pemkey.private_bytes(
+            serialization.Encoding.DER,
+            serialization.PrivateFormat.TraditionalOpenSSL,
+            serialization.NoEncryption()
+        )
+        jwt(revokeCert, s.post, {"kid":account}, ES256_priv_key,
+            {'certificate': base64url(derkey)})
+
 while True:
     print("Zzzzzz! Zzzzzz! ")
     time.sleep(30)
