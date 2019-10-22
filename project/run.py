@@ -122,7 +122,7 @@ class httpShutHandler(http.server.BaseHTTPRequestHandler):
         os.system(r'ps o pid,comm | \
                      grep python | \
                      sed -ne "s/^[[:space:]]*\([0-9]*\)[[:space:]].*$/\1/p" | \
-                     xargs kill -s 15 ')
+                     xargs kill -15 ')
 http_shut = http.server.HTTPServer(('0.0.0.0', 5003), httpShutHandler)
 threading.Thread(target=http_shut.serve_forever).start()
 
