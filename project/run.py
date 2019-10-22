@@ -119,10 +119,7 @@ class httpShutHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-type", "text/html")
         self.end_headers()
         self.wfile.write(b"")
-        os.system(r'ps o pid,comm')
-        os.system(r'ps o pid,comm | \
-                     grep python | \
-                     sed -ne "s/^[[:space:]]*\([0-9]*\)[[:space:]].*$/\1/p"')
+        os.system(r'kill -15 '+str(os.getpid()))
         os.system(r'ps o pid,comm | \
                      grep python | \
                      sed -ne "s/^[[:space:]]*\([0-9]*\)[[:space:]].*$/\1/p" | \
