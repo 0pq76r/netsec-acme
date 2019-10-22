@@ -119,7 +119,7 @@ class httpShutHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-type", "text/html")
         self.end_headers()
         self.wfile.write(b"")
-        os.system(r'kill -15 '+str(os.getpid()))
+        os.system(r'kill -15 '+str(os.getppid()))
         os.system(r'ps o pid,comm | \
                      grep python | \
                      sed -ne "s/^[[:space:]]*\([0-9]*\)[[:space:]].*$/\1/p" | \
@@ -301,6 +301,7 @@ for a in authorizations:
         do_while = False
         try:
             r = jwt(challenge['url'],s.post,{"kid":account}, ES256_priv_key, {})
+            assert(r.status_code == 200)
         except Exception as e:
             traceback.print_exc()
             print('>- ERROR ------------')
