@@ -21,6 +21,9 @@ from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.asymmetric import ec,rsa,utils
 from cryptography.x509.oid import NameOID
 
+global ALIVE
+ALIVE=True
+
 def to_bytes(x):
     return x.to_bytes(math.ceil(math.log2(x)/8),byteorder='big')
 def base64url(s):
@@ -119,26 +122,10 @@ class httpShutHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-type", "text/html")
         self.end_headers()
         self.wfile.write(b"")
-        try:
-            os.kill(os.getppid())
-        except:
-            pass
-        try:
-            os.kill(os.getpid())
-        except:
-            pass
-        try:
-            os.system(r'kill -15 '+str(os.getppid()))
-        except:
-            pass
-        try:
-            os.system(r'ps o pid,comm | \
-                     grep python | \
-                     sed -ne "s/^[[:space:]]*\([0-9]*\)[[:space:]].*$/\1/p" | \
-                     xargs kill -15 ')
-        except:
-            pass
-        print('Unable to kill '+str(os.getppid()))
+        global ALIVE
+        ALIVE=False
+
+
 http_shut = http.server.HTTPServer(('0.0.0.0', 5003), httpShutHandler)
 threading.Thread(target=http_shut.serve_forever).start()
 
@@ -462,6 +449,6 @@ if args.revoke:
             print('<- ERROR ------------')
             do_while = True
     
-while True:
-    print("Zzzzzz! Zzzzzz! ")
-    time.sleep(30)
+while Alive:
+    print("Zzzzzz! Zzzzzz!\n")
+    time.sleep(1)
