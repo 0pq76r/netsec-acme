@@ -424,22 +424,27 @@ threading.Thread(target=http_cert.serve_forever).start()
 ######################
 if args.revoke:
     print("ACME revoke cert ....")
-    with open("./ec_cert.pem", "rb") as keyfile:
+    with open("./ec_cert.pem", "rb") as certfile:
         # Load the PEM format key
-        pemkey = serialization.load_pem_private_key(
-            keyfile.read(),
-            None,
-            default_backend()
-        )
-        # Serialize it to DER format
-        derkey = pemkey.private_bytes(
-            serialization.Encoding.DER,
-            serialization.PrivateFormat.TraditionalOpenSSL,
-            serialization.NoEncryption()
-        )
-        jwt(revokeCert, s.post, {"kid":account}, ES256_priv_key,
-            {'certificate': base64url(derkey)})
-
+        pemcert = x509.load_pem_x509_certificate(certfile.read(), default_backend());
+        dercert = pemcert.public_bytes(serialization.Encoding.DER)
+        do_while = True
+    while do_while:
+        do_while = False
+        try:
+            r = jwt(revokeCert, s.post, {"kid":account}, ES256_priv_key,
+                    {'certificate': base64url(dercert)})
+            assert(r.status_code == 200)
+        except Exception as e:
+            traceback.print_exc()
+            print('>- ERROR ------------')
+            print('--- HEAD ------------')
+            print(r.headers)
+            print('--- CONTENT ------------')
+            print(r.content)
+            print('<- ERROR ------------')
+            do_while = True
+    
 while True:
     print("Zzzzzz! Zzzzzz! ")
     time.sleep(30)
