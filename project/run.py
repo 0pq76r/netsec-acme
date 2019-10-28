@@ -124,6 +124,7 @@ class httpShutHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(b"")
         global ALIVE
         ALIVE=False
+        exit(0);
 
 
 http_shut = http.server.HTTPServer(('0.0.0.0', 5003), httpShutHandler)
@@ -449,6 +450,6 @@ if args.revoke:
             print('<- ERROR ------------')
             do_while = True
     
-while Alive:
+while ALIVE:
     print("Zzzzzz! Zzzzzz!\n")
     time.sleep(1)
