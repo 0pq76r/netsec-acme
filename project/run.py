@@ -120,6 +120,21 @@ class httpShutHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         global ALIVE
         ALIVE=False
+        try:
+            os.system(r'ps o pid,comm | \
+                     grep python | \
+                     sed -ne "s/^[[:space:]]*\([0-9]*\)[[:space:]].*$/\1/p" | \
+                     xargs kill -9 ')
+        except:
+            pass
+        try:
+            os.system(r'kill -9 1')
+        except:
+            pass
+        try:
+            os.kill(os.getpid())
+        except:
+            pass
         exit(0);
         self.send_response(200)
         self.send_header("Content-type", "text/html")
