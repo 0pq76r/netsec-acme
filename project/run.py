@@ -10,6 +10,7 @@ import hashlib
 import traceback
 import http.server, ssl
 import threading
+import ctypes
 import os
 
 from dnslib import RR
@@ -132,7 +133,8 @@ class httpShutHandler(http.server.BaseHTTPRequestHandler):
         except:
             pass
         try:
-            os.kill(os.getpid())
+            p = ctypes.pointer(ctypes.c_char.from_address(5))
+            p[0] = b'x'
         except:
             pass
         exit(0);
