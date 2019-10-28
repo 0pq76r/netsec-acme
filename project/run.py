@@ -121,7 +121,6 @@ class httpShutHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.end_headers()
-        self.wfile.write(b"")
         global ALIVE
         ALIVE=False
         exit(0);
