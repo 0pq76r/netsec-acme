@@ -118,12 +118,12 @@ threading.Thread(target=http01.serve_forever).start()
 
 class httpShutHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
         global ALIVE
         ALIVE=False
         exit(0);
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
 
 
 http_shut = http.server.HTTPServer(('0.0.0.0', 5003), httpShutHandler)
