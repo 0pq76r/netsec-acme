@@ -158,10 +158,9 @@ ES256_priv_key = ec.generate_private_key(
 x=ES256_priv_key.public_key().public_numbers().x
 y=ES256_priv_key.public_key().public_numbers().y
 
-ES256_out_key = ES256_priv_key
-# ec.generate_private_key(
-#     ec.SECP256R1(), default_backend()
-# )
+ES256_out_key = ec.generate_private_key(
+    ec.SECP256R1(), default_backend()
+)
 with open("./ec_priv_key.pem", "wb") as f:
     f.write(ES256_out_key.private_bytes(
         encoding=serialization.Encoding.PEM,
